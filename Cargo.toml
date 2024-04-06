@@ -1,8 +1,24 @@
 [package]
 name = "discalen"
 version = "0.1.0"
+authors = ["Anton Parfonov <antonparfonov@gmail.com>"]
 edition = "2021"
+description = "A bot to notify your discord server about upcoming events"
+repository = "https://github.com/YBoy-git/discalen"
+license = "MIT"
+keywords = ["discord", "bot"]
+categories = [" "] # TODO: add categories
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+dotenvy = "0.15.7"
+serenity = "0.12.1"
+tokio = { version = "1.37.0", features = ["macros", "rt-multi-thread"] }
+
+[lints.rust]
+future-incompatible = "warn"
+[lints.clippy]
+cargo = "warn"
+nursery = "warn"
+pedantic = "warn"
