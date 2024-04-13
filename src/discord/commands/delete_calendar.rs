@@ -1,35 +1,29 @@
-use crate::calendar::Client as CalendarClient;
+use crate::{calendar::Client as CalendarClient, Error};
 use serenity::all::{Context, CreateCommand, GuildId, Permissions, ResolvedOption};
-use tracing::{error, info, instrument};
+use tracing::{info, instrument};
 
 #[instrument]
-pub async fn run(ctx: &Context, guild_id: GuildId, _options: &[ResolvedOption<'_>]) -> String {
+pub async fn run(
+    ctx: &Context,
+    guild_id: GuildId,
+    _options: &[ResolvedOption<'_>],
+) -> Result<String, Error> {
     info!("Deleting calendars");
     let lock = ctx.data.read().await;
-    let calendar_client = match lock.get::<CalendarClient>() {
-        Some(client) => client,
-        None => {
-            error!("No calendar client");
-            return "An error occurred: no calendar client".into();
-        }
-    };
-    let calendars = match calendar_client.get_calendars_by_guild_id(&guild_id).await {
-        Ok(calendars) => calendars,
-        Err(why) => {
-            error!(?why, "Failed to get calendars by guild id");
-            return format!("An error occurred: {why}");
-        }
-    };
+    let calendar_client = lock
+        .get::<CalendarClient>()
+        .ok_or(Error::NoCalendarClient)?;
+    let calendars = calendar_client.get_calendars_by_guild_id(&guild_id).await?;
 
     let mut handles = vec![];
     for calendar in &calendars {
-        let calendar_id = calendar.id.as_ref().unwrap_or_else(|| unreachable!());
+        let calendar_id = calendar.id.as_ref().expect("No calendar id");
         let handle = calendar_client.delete_calendar(calendar_id);
         handles.push(handle);
     }
     futures::future::join_all(handles).await;
 
-    "Deleted calendars!".into()
+    Ok("Deleted calendars!".into())
 }
 
 pub fn register() -> CreateCommand {

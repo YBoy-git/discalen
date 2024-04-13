@@ -60,6 +60,6 @@ impl AppConfig {
         let config = config.set_override("db.password", db_password)?;
         let config = config.build()?;
 
-        config.try_deserialize().map_err(Into::into)
+        Ok(config.try_deserialize()?)
     }
 }

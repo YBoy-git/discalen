@@ -15,6 +15,9 @@ pub enum Error {
     #[error("No calendar client in data")]
     NoCalendarClient,
 
+    #[error("Required parameter {0} is missing")]
+    MissingParameter(String),
+
     #[error(transparent)]
     DbError(#[from] sqlx::Error),
 
@@ -29,4 +32,7 @@ pub enum Error {
 
     #[error(transparent)]
     SerenityError(#[from] serenity::Error),
+
+    #[error(transparent)]
+    ChronoParseError(#[from] chrono::ParseError),
 }

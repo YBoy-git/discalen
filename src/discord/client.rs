@@ -13,7 +13,11 @@ impl Client {
     }
 }
 
-pub async fn set_event_channel(pool: &PgPool, guild_id: &GuildId, channel_id: &ChannelId) -> Result<(), crate::Error> {
+pub async fn set_event_channel(
+    pool: &PgPool,
+    guild_id: &GuildId,
+    channel_id: &ChannelId,
+) -> Result<(), crate::Error> {
     query!(
         "
         DELETE FROM event_channels WHERE guild_id = $1
@@ -32,12 +36,14 @@ pub async fn set_event_channel(pool: &PgPool, guild_id: &GuildId, channel_id: &C
         channel_id.get().to_string(),
     )
     .execute(pool)
-    .await
-    .unwrap();
+    .await?;
     Ok(())
 }
 
-pub async fn get_event_channel_id(pool: &PgPool, guild_id: &GuildId) -> Result<Option<ChannelId>, crate::Error> {
+pub async fn get_event_channel_id(
+    pool: &PgPool,
+    guild_id: &GuildId,
+) -> Result<Option<ChannelId>, crate::Error> {
     let response = query!(
         "
         SELECT channel_id FROM event_channels

@@ -69,7 +69,7 @@ impl Client {
         let discord_task = tokio::spawn(async move {
             let mut serenity_client = discord_client.serenity_client;
             if let Err(why) = serenity_client.start_autosharded().await {
-                println!("Client error: {why:?}");
+                error!("Client error: {why:?}");
             }
         });
 
@@ -82,8 +82,8 @@ impl Client {
 
                 let mut calendars_handles = vec![];
                 for calendar in &calendars {
-                    let handle = calendar_client
-                        .list_events(calendar.id.as_ref().unwrap_or_else(|| unreachable!()));
+                    let handle =
+                        calendar_client.list_events(calendar.id.as_ref().expect("No id specified"));
                     calendars_handles.push((calendar, handle));
                 }
 
@@ -134,14 +134,10 @@ async fn send_event_notification(
     event: Event,
 ) -> Result<(), Error> {
     let lock = data.read().await;
-    let summary = calendar.summary.as_ref().unwrap_or_else(|| unreachable!());
-    let guild_id = match summary.parse() {
-        Ok(guild_id) => guild_id,
-        Err(why) => {
-            error!(?why, "Failed to parse calendar summary to guild id");
-            return Err(Error::CalendarSummaryNotDiscordServerId(summary.into()));
-        }
-    };
+    let summary = calendar.summary.as_ref().expect("No calendar summary");
+    let guild_id = summary
+        .parse()
+        .map_err(|_| Error::CalendarSummaryNotDiscordServerId(summary.into()))?;
     let guild_id = GuildId::new(guild_id);
     let pool = lock.get::<Pool>().ok_or(Error::NoPool)?;
     let Some(channel_id) = discord::get_event_channel_id(pool, &guild_id).await? else {
@@ -155,8 +151,8 @@ async fn send_event_notification(
             None => "No label",
         }
     ));
-    if let Err(why) = sender_http.send_message(channel_id, vec![], &message).await {
-        error!(?why, "Failed to send an event notification")
-    };
+    sender_http
+        .send_message(channel_id, vec![], &message)
+        .await?;
     Ok(())
 }

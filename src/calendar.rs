@@ -3,7 +3,7 @@ use google_calendar3::{
     hyper, hyper_rustls, CalendarHub,
 };
 use serenity::{all::GuildId, prelude::TypeMapKey};
-use tracing::{error, instrument, warn};
+use tracing::{instrument, warn};
 use yup_oauth2::{
     hyper::Client as CalendarClient, parse_service_account_key, ServiceAccountAuthenticator,
 };
@@ -13,9 +13,7 @@ use crate::Error;
 pub type MyCalendarHub =
     CalendarHub<hyper_rustls::HttpsConnector<hyper::client::connect::HttpConnector>>;
 
-pub async fn authenticate_calendar_hub(
-    key: impl AsRef<[u8]>,
-) -> Result<MyCalendarHub, Error> {
+pub async fn authenticate_calendar_hub(key: impl AsRef<[u8]>) -> Result<MyCalendarHub, Error> {
     let sa_key = parse_service_account_key(key)?;
     let auth = ServiceAccountAuthenticator::builder(sa_key).build().await?;
 
@@ -53,13 +51,13 @@ impl Client {
             summary: Some(name.to_string()),
             ..Default::default()
         };
-        let calendar = match self.calendar_hub.calendars().insert(calendar).doit().await {
-            Ok(res) => res.1,
-            Err(why) => {
-                error!("Error creating a calendar: {why}");
-                return Err(Error::GoogleError(why));
-            }
-        };
+        let calendar = self
+            .calendar_hub
+            .calendars()
+            .insert(calendar)
+            .doit()
+            .await?
+            .1;
 
         let rule = AclRule {
             role: Some("reader".into()),
@@ -69,99 +67,82 @@ impl Client {
             }),
             ..Default::default()
         };
-        if let Err(why) = self
-            .calendar_hub
+        self.calendar_hub
             .acl()
-            .insert(rule, calendar.id.as_ref().unwrap_or_else(|| unreachable!()))
+            .insert(rule, calendar.id.as_ref().expect("No calendar id"))
             .doit()
-            .await
-        {
-            error!(?why, "Failed to set acl for the calendar");
-            return Err(Error::GoogleError(why));
-        };
+            .await?;
         Ok(calendar)
     }
 
     #[instrument(skip(self))]
     pub async fn delete_calendar(&self, calendar_id: &str) -> Result<(), Error> {
-        if let Err(why) = self
-            .calendar_hub
+        self.calendar_hub
             .calendars()
             .delete(calendar_id)
             .doit()
-            .await
-        {
-            error!(?why, "Failed to delete the calendar");
-            return Err(Error::GoogleError(why));
-        };
+            .await?;
         Ok(())
     }
 
     #[instrument(skip(self))]
     pub async fn create_event(&self, event: Event, calendar_id: &str) -> Result<Event, Error> {
-        match self
+        Ok(self
             .calendar_hub
             .events()
             .insert(event, calendar_id)
             .doit()
-            .await
-        {
-            Ok(event) => Ok(event.1),
-            Err(why) => {
-                error!(?why, "Failed to create an event");
-                Err(Error::GoogleError(why))
-            }
-        }
+            .await?
+            .1)
     }
 
     #[instrument(skip(self))]
     pub async fn delete_event(&self, id: &str, calendar_id: &str) -> Result<(), Error> {
-        if let Err(why) = self
-            .calendar_hub
+        self.calendar_hub
             .events()
             .delete(calendar_id, id)
             .doit()
-            .await
-        {
-            error!(?why, "Failed to delete an event");
-            return Err(Error::GoogleError(why));
-        };
+            .await?;
         Ok(())
     }
 
     #[instrument(skip(self))]
     pub async fn list_calendars(&self) -> Result<Vec<CalendarListEntry>, Error> {
-        match self.calendar_hub.calendar_list().list().doit().await {
-            Ok(response) => Ok(response.1.items.unwrap_or_else(|| unreachable!())),
-            Err(why) => {
-                error!(?why, "Failed to list calendars");
-                Err(Error::GoogleError(why))
-            }
-        }
+        Ok(self
+            .calendar_hub
+            .calendar_list()
+            .list()
+            .doit()
+            .await?
+            .1
+            .items
+            .expect("No items"))
     }
 
     #[instrument(skip(self))]
     pub async fn list_events(&self, calendar_id: &str) -> Result<Vec<Event>, Error> {
-        match self.calendar_hub.events().list(calendar_id).doit().await {
-            Ok(response) => Ok(response.1.items.unwrap_or_else(|| unreachable!())),
-            Err(why) => {
-                error!(?why, "Failed to list events");
-                Err(Error::GoogleError(why))
-            }
-        }
+        Ok(self
+            .calendar_hub
+            .events()
+            .list(calendar_id)
+            .doit()
+            .await?
+            .1
+            .items
+            .expect("No items"))
     }
 
     #[instrument(skip(self))]
     pub async fn get_calendars_by_guild_id(
         &self,
         guild_id: &GuildId,
-    ) -> Result<Vec<CalendarListEntry>, Error> {
+    ) -> Result<Option<CalendarListEntry>, Error> {
         let mut response = self.list_calendars().await?;
         response.retain(|calendar| calendar.summary == Some(guild_id.to_string()));
         if response.len() > 1 {
             warn!("More than one calendar associated with the server, using the newest one");
         };
-        Ok(response)
+        Ok(response.pop())
     }
 
     #[instrument(skip(self))]
@@ -174,8 +155,8 @@ impl Client {
         let value = response
             .into_iter()
             .filter_map(|event| {
-                if event.summary == Some(label.to_string()) {
-                    Some(event.id.unwrap_or_else(|| unreachable!()))
+                if event.summary.as_deref() == Some(label) {
+                    Some(event.id.expect("No event id"))
                 } else {
                     None
                 }

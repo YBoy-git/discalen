@@ -9,6 +9,8 @@ use serenity::{
 };
 use tracing::{error, info, instrument, warn};
 
+use super::commands::MessageResult;
+
 #[derive(Debug)]
 pub struct Handler;
 
@@ -56,22 +58,24 @@ impl EventHandler for Handler {
 
             let content = match command.data.name.as_ref() {
                 "ping" => Some(commands::ping::run(&options)),
-                "create_calendar" => {
-                    Some(commands::create_calendar::run(&ctx, guild_id, &options).await)
-                }
-                "delete_calendar" => {
-                    Some(commands::delete_calendar::run(&ctx, guild_id, &options).await)
-                }
-                "set_event_channel" => Some(
+                "create_calendar" => Some(result_to_message(
+                    commands::create_calendar::run(&ctx, guild_id, &options).await,
+                )),
+                "delete_calendar" => Some(result_to_message(
+                    commands::delete_calendar::run(&ctx, guild_id, &options).await,
+                )),
+                "set_event_channel" => Some(result_to_message(
                     commands::set_event_channel::run(&ctx, guild_id, channel_id, &options).await,
-                ),
-                "list_events" => Some(commands::list_events::run(&ctx, &guild_id, &options).await),
-                "create_event" => {
-                    Some(commands::create_event::run(&ctx, &guild_id, &options).await)
-                }
-                "delete_event" => {
-                    Some(commands::delete_event::run(&ctx, &guild_id, &options).await)
-                }
+                )),
+                "list_events" => Some(result_to_message(
+                    commands::list_events::run(&ctx, &guild_id, &options).await,
+                )),
+                "create_event" => Some(result_to_message(
+                    commands::create_event::run(&ctx, &guild_id, &options).await,
+                )),
+                "delete_event" => Some(result_to_message(
+                    commands::delete_event::run(&ctx, &guild_id, &options).await,
+                )),
                 command => {
                     error!("An unimplemented command met: {command}");
                     Some("not implemented".to_string())
@@ -122,4 +126,14 @@ async fn init_commands(http: &Http, guild: &GuildId) {
     {
         error!(?why, "Failed to create a command");
     };
+}
+
+fn result_to_message(result: MessageResult) -> String {
+    match result {
+        Ok(message) => message,
+        Err(why) => {
+            error!(?why, "Failed to execute the command");
+            format!("Error: {why}")
+        }
+    }
 }
