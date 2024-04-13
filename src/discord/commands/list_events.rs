@@ -1,3 +1,4 @@
+use crate::calendar::Client as CalendarClient;
 use serenity::all::{Context, CreateCommand, GuildId, ResolvedOption};
 use tracing::{info, instrument, warn};
 
@@ -8,7 +9,7 @@ pub async fn run(ctx: &Context, guild_id: &GuildId, _options: &[ResolvedOption<'
     info!("Fetching an event list for a guild");
     let lock = ctx.data.read().await;
     let calendar_client = lock
-        .get::<crate::calendar::Client>()
+        .get::<CalendarClient>()
         .expect("No calendar client found");
 
     let calendars = match calendar_client

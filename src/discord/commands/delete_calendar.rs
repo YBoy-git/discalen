@@ -1,12 +1,12 @@
+use crate::calendar::Client as CalendarClient;
 use serenity::all::{Context, CreateCommand, GuildId, Permissions, ResolvedOption};
 use tracing::{info, instrument};
-
 #[instrument]
 pub async fn run(ctx: &Context, guild_id: GuildId, _options: &[ResolvedOption<'_>]) -> String {
     info!("Deleting calendars");
     let lock = ctx.data.read().await;
     let calendar_client = lock
-        .get::<crate::calendar::Client>()
+        .get::<CalendarClient>()
         .expect("No calendar client found");
     let calendars = calendar_client.get_calendars_by_guild_id(&guild_id).await;
 

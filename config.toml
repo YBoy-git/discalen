@@ -1,4 +1,4 @@
-notification_period = "10s"
+notification_period = "4h"
 db.user = "postgres"
 db.host = "localhost"
 db.port = 5432

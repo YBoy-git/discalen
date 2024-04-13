@@ -1,3 +1,4 @@
+use crate::calendar::Client as CalendarClient;
 use serenity::all::{
     CommandOptionType, Context, CreateCommand, CreateCommandOption, GuildId, Permissions,
     ResolvedOption, ResolvedValue,
@@ -16,7 +17,7 @@ pub async fn run(ctx: &Context, guild_id: &GuildId, options: &[ResolvedOption<'_
 
     let lock = ctx.data.read().await;
     let calendar_client = lock
-        .get::<crate::calendar::Client>()
+        .get::<CalendarClient>()
         .expect("No calendar client found");
     let Some(calendar) = calendar_client
         .get_calendars_by_guild_id(guild_id)

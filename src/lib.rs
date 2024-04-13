@@ -1,8 +1,10 @@
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
+use calendar::Client as CalendarClient;
 use chrono::Utc;
 use config::AppConfig;
+use discord::Client as DiscordClient;
 use discord::Handler;
 use futures::StreamExt;
 use google_calendar3::api::CalendarListEntry;
@@ -15,7 +17,8 @@ use serenity::all::Http;
 use serenity::prelude::*;
 use serenity::Client as SerenityClient;
 use sqlx::PgPool;
-use tracing::{error, warn};
+use tracing::error;
+use tracing::warn;
 
 pub mod config;
 
@@ -29,7 +32,7 @@ impl TypeMapKey for Pool {
 }
 
 pub struct Client {
-    discord_client: discord::Client,
+    discord_client: DiscordClient,
 }
 
 impl Client {
@@ -38,7 +41,7 @@ impl Client {
             | GatewayIntents::MESSAGE_CONTENT
             | GatewayIntents::GUILDS;
 
-        let calendar_client = calendar::Client::with_sa_key(config.google_secret.expose_secret())
+        let calendar_client = CalendarClient::with_sa_key(config.google_secret.expose_secret())
             .await
             .context("Failed to authorize into google")?;
 
@@ -50,12 +53,12 @@ impl Client {
         let serenity_data = serenity_client.data.clone();
         {
             let mut data = serenity_data.write().await;
-            data.insert::<calendar::Client>(calendar_client.clone());
+            data.insert::<CalendarClient>(calendar_client.clone());
             data.insert::<Pool>(pool);
         }
 
         let discalen_client = Self {
-            discord_client: discord::Client::new(serenity_client).await,
+            discord_client: DiscordClient::new(serenity_client).await,
         };
         let discord_client = discalen_client.discord_client;
         let sender_http = discord_client.serenity_client.http.clone();
@@ -86,7 +89,7 @@ impl Client {
                 while let Some(handle) = stream.next().await {
                     let (calendar, events) = handle;
                     let events = events.await;
-                    
+
                     let mut sending_tasks = vec![];
                     for event in events {
                         let date = match event.start {

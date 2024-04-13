@@ -1,3 +1,4 @@
+use crate::calendar::Client as CalendarClient;
 use crate::discord::commands;
 use serenity::{
     all::{
@@ -73,8 +74,7 @@ impl EventHandler for Handler {
                     Some(commands::delete_calendar::run(&ctx, guild_id, &options).await)
                 }
                 "set_event_channel" => Some(
-                    commands::set_event_channel::run(&ctx, guild_id, channel_id, &options)
-                        .await,
+                    commands::set_event_channel::run(&ctx, guild_id, channel_id, &options).await,
                 ),
                 "list_events" => Some(commands::list_events::run(&ctx, &guild_id, &options).await),
                 "create_event" => {
@@ -108,7 +108,7 @@ async fn create_calendar(ctx: &Context, name: String) {
     ctx.data
         .read()
         .await
-        .get::<crate::calendar::Client>()
+        .get::<CalendarClient>()
         .expect("No calendar client found")
         .create_calendar(&name)
         .await;

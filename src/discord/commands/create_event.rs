@@ -1,5 +1,6 @@
 use std::str::FromStr;
 
+use crate::calendar::Client as CalendarClient;
 use chrono::{Datelike, Days, NaiveDate, Utc};
 use google_calendar3::api::{Event, EventDateTime};
 use serenity::all::{
@@ -56,7 +57,7 @@ pub async fn run(ctx: &Context, guild_id: &GuildId, options: &[ResolvedOption<'_
 
     let lock = ctx.data.read().await;
     let calendar_client = lock
-        .get::<crate::calendar::Client>()
+        .get::<CalendarClient>()
         .expect("No calendar client found");
 
     let Some(calendar) = calendar_client
