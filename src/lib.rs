@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use chrono::Utc;
 use config::AppConfig;
 use discord::Handler;
+use futures::StreamExt;
 use google_calendar3::api::CalendarListEntry;
 use google_calendar3::api::Event;
 use google_calendar3::api::EventDateTime;
@@ -73,11 +74,19 @@ impl Client {
                 tokio::time::sleep(config.notification_period).await;
 
                 let calendars = calendar_client.list_calendars().await;
-                // TODO optimize
-                for calendar in calendars {
-                    let events = calendar_client
-                        .list_events(calendar.id.as_ref().unwrap_or_else(|| unreachable!()))
-                        .await;
+
+                let mut calendars_handles = vec![];
+                for calendar in &calendars {
+                    let handle = calendar_client
+                        .list_events(calendar.id.as_ref().unwrap_or_else(|| unreachable!()));
+                    calendars_handles.push((calendar, handle));
+                }
+
+                let mut stream = futures::stream::iter(calendars_handles);
+                while let Some(handle) = stream.next().await {
+                    let (calendar, events) = handle;
+                    let events = events.await;
+                    
                     let mut sending_tasks = vec![];
                     for event in events {
                         let date = match event.start {
@@ -93,7 +102,7 @@ impl Client {
                             sending_tasks.push(send_event_notification(
                                 discord_data.clone(),
                                 &sender_http,
-                                &calendar,
+                                calendar,
                                 event,
                             ));
                         }
