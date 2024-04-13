@@ -2,8 +2,7 @@ use crate::calendar::Client as CalendarClient;
 use crate::discord::commands;
 use serenity::{
     all::{
-        Context, CreateInteractionResponse, CreateInteractionResponseMessage, EventHandler, Guild,
-        Interaction, Ready,
+        Context, CreateInteractionResponse, CreateInteractionResponseMessage, EventHandler, Guild, GuildId, Http, Interaction, Ready
     },
     async_trait,
 };
@@ -22,6 +21,7 @@ impl EventHandler for Handler {
                 if is_new {
                     info!("Added to {} server", guild.name);
                     create_calendar(&ctx, guild.name).await;
+                    init_commands(&ctx.http, &guild.id).await;
                 }
             }
         }
@@ -31,26 +31,12 @@ impl EventHandler for Handler {
     async fn ready(&self, ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
 
-        let guilds = ready.guilds.into_iter().map(|guild| guild.id);
+        let guilds = ready.guilds.iter().map(|guild| &guild.id);
+        let mut handles = Vec::with_capacity(guilds.len());
         for guild in guilds {
-            if let Err(why) = guild
-                .set_commands(
-                    &ctx.http,
-                    vec![
-                        commands::ping::register(),
-                        commands::create_calendar::register(),
-                        commands::delete_calendar::register(),
-                        commands::set_event_channel::register(),
-                        commands::list_events::register(),
-                        commands::create_event::register(),
-                        commands::delete_event::register(),
-                    ],
-                )
-                .await
-            {
-                error!(?why, "Failed to create a command");
-            };
+            handles.push(init_commands(&ctx.http, guild));
         }
+        futures::future::join_all(handles).await;
     }
 
     #[instrument]
@@ -112,4 +98,24 @@ async fn create_calendar(ctx: &Context, name: String) {
         .expect("No calendar client found")
         .create_calendar(&name)
         .await;
+}
+
+async fn init_commands(http: &Http, guild: &GuildId) {
+    if let Err(why) = guild
+        .set_commands(
+            http,
+            vec![
+                commands::ping::register(),
+                commands::create_calendar::register(),
+                commands::delete_calendar::register(),
+                commands::set_event_channel::register(),
+                commands::list_events::register(),
+                commands::create_event::register(),
+                commands::delete_event::register(),
+            ],
+        )
+        .await
+    {
+        error!(?why, "Failed to create a command");
+    };
 }
