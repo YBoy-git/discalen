@@ -2,7 +2,7 @@ use crate::discord::commands;
 use serenity::{
     all::{
         Context, CreateInteractionResponse, CreateInteractionResponseMessage, EventHandler, Guild,
-        Interaction, Message, Ready,
+        Interaction, Ready,
     },
     async_trait,
 };
@@ -13,16 +13,6 @@ pub struct Handler;
 
 #[async_trait]
 impl EventHandler for Handler {
-    #[instrument]
-    async fn message(&self, ctx: Context, msg: Message) {
-        let content = msg.content;
-
-        // TODO remove when no more needed
-        if content == "!discalen create_calendar" {
-            create_calendar(&ctx, msg.guild_id.unwrap().to_string()).await;
-        }
-    }
-
     #[instrument]
     async fn guild_create(&self, ctx: Context, guild: Guild, is_new: Option<bool>) {
         match is_new {
@@ -42,11 +32,13 @@ impl EventHandler for Handler {
 
         let guilds = ready.guilds.into_iter().map(|guild| guild.id);
         for guild in guilds {
-            guild
+            if let Err(why) = guild
                 .set_commands(
                     &ctx.http,
                     vec![
                         commands::ping::register(),
+                        commands::create_calendar::register(),
+                        commands::delete_calendar::register(),
                         commands::set_event_channel::register(),
                         commands::list_events::register(),
                         commands::create_event::register(),
@@ -54,7 +46,9 @@ impl EventHandler for Handler {
                     ],
                 )
                 .await
-                .unwrap();
+            {
+                error!(?why, "Failed to create a command");
+            };
         }
     }
 
@@ -63,41 +57,32 @@ impl EventHandler for Handler {
         if let Interaction::Command(command) = interaction {
             info!(?command, "Received command interaction");
 
+            let Some(guild_id) = command.guild_id else {
+                error!("No guild_id found, cancelling");
+                return;
+            };
+            let channel_id = command.channel_id;
+            let options = command.data.options();
+
             let content = match command.data.name.as_ref() {
-                "ping" => Some(commands::ping::run(&command.data.options())),
+                "ping" => Some(commands::ping::run(&options)),
+                "create_calendar" => {
+                    Some(commands::create_calendar::run(&ctx, guild_id, &options).await)
+                }
+                "delete_calendar" => {
+                    Some(commands::delete_calendar::run(&ctx, guild_id, &options).await)
+                }
                 "set_event_channel" => Some(
-                    commands::set_event_channel::run(
-                        &ctx,
-                        command.guild_id.unwrap(),
-                        command.channel_id,
-                        &command.data.options(),
-                    )
-                    .await,
+                    commands::set_event_channel::run(&ctx, guild_id, channel_id, &options)
+                        .await,
                 ),
-                "list_events" => Some(
-                    commands::list_events::run(
-                        &ctx,
-                        &command.guild_id.unwrap(),
-                        &command.data.options(),
-                    )
-                    .await,
-                ),
-                "create_event" => Some(
-                    commands::create_event::run(
-                        &ctx,
-                        &command.guild_id.unwrap(),
-                        &command.data.options(),
-                    )
-                    .await,
-                ),
-                "delete_event" => Some(
-                    commands::delete_event::run(
-                        &ctx,
-                        &command.guild_id.unwrap(),
-                        &command.data.options(),
-                    )
-                    .await,
-                ),
+                "list_events" => Some(commands::list_events::run(&ctx, &guild_id, &options).await),
+                "create_event" => {
+                    Some(commands::create_event::run(&ctx, &guild_id, &options).await)
+                }
+                "delete_event" => {
+                    Some(commands::delete_event::run(&ctx, &guild_id, &options).await)
+                }
                 command => {
                     error!("An unimplemented command met: {command}");
                     Some("not implemented".to_string())
@@ -105,7 +90,9 @@ impl EventHandler for Handler {
             };
 
             if let Some(content) = content {
-                let data = CreateInteractionResponseMessage::new().content(content);
+                let data = CreateInteractionResponseMessage::new()
+                    .content(content)
+                    .ephemeral(true);
                 let builder = CreateInteractionResponse::Message(data);
                 if let Err(why) = command.create_response(&ctx.http, builder).await {
                     error!("Cannot respond to slash command: {why}");
@@ -119,10 +106,10 @@ impl EventHandler for Handler {
 async fn create_calendar(ctx: &Context, name: String) {
     info!("Pushing a calendar to queue");
     ctx.data
-        .write()
+        .read()
         .await
-        .get_mut::<crate::calendar::Client>()
-        .unwrap()
+        .get::<crate::calendar::Client>()
+        .expect("No calendar client found")
         .create_calendar(&name)
         .await;
 }

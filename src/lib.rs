@@ -1,30 +1,45 @@
+use std::sync::Arc;
+
 use anyhow::{Context, Result};
 use chrono::Utc;
 use config::AppConfig;
 use discord::Handler;
+use google_calendar3::api::CalendarListEntry;
+use google_calendar3::api::Event;
+use google_calendar3::api::EventDateTime;
 use secrecy::ExposeSecret;
 use serenity::all::CreateMessage;
 use serenity::all::GuildId;
+use serenity::all::Http;
 use serenity::prelude::*;
 use serenity::Client as SerenityClient;
+use sqlx::PgPool;
+use tracing::{error, warn};
 
 pub mod config;
 
 mod calendar;
 mod discord;
 
+pub struct Pool;
+
+impl TypeMapKey for Pool {
+    type Value = PgPool;
+}
+
 pub struct Client {
     discord_client: discord::Client,
 }
 
 impl Client {
-    pub async fn run(config: AppConfig) -> Result<()> {
+    pub async fn run(config: AppConfig, pool: PgPool) -> Result<()> {
         let intents = GatewayIntents::GUILD_MESSAGES
             | GatewayIntents::MESSAGE_CONTENT
             | GatewayIntents::GUILDS;
 
-        let calendar_client =
-            calendar::Client::with_sa_key(config.google_secret.expose_secret()).await;
+        let calendar_client = calendar::Client::with_sa_key(config.google_secret.expose_secret())
+            .await
+            .context("Failed to authorize into google")?;
 
         let serenity_client =
             SerenityClient::builder(config.discord_access_token.expose_secret(), intents)
@@ -35,6 +50,7 @@ impl Client {
         {
             let mut data = serenity_data.write().await;
             data.insert::<calendar::Client>(calendar_client.clone());
+            data.insert::<Pool>(pool);
         }
 
         let discalen_client = Self {
@@ -57,32 +73,32 @@ impl Client {
                 tokio::time::sleep(config.notification_period).await;
 
                 let calendars = calendar_client.list_calendars().await;
+                // TODO optimize
                 for calendar in calendars {
                     let events = calendar_client
-                        .list_events(calendar.id.as_ref().unwrap())
+                        .list_events(calendar.id.as_ref().unwrap_or_else(|| unreachable!()))
                         .await;
+                    let mut sending_tasks = vec![];
                     for event in events {
-                        let date = event.start.unwrap().date.unwrap();
+                        let date = match event.start {
+                            Some(EventDateTime {
+                                date: Some(date), ..
+                            }) => date,
+                            _ => {
+                                warn!(?event, "The event doesn't have the start date, skipping...");
+                                continue;
+                            }
+                        };
                         if date == Utc::now().date_naive() {
-                            let lock = discord_data.read().await;
-                            let channel_id = lock
-                                .get::<discord::Data>()
-                                .unwrap()
-                                .event_channels
-                                .get(&GuildId::new(
-                                    calendar.summary.as_ref().unwrap().parse().unwrap(),
-                                ))
-                                .unwrap();
-                            let message = CreateMessage::new().content(format!(
-                                "Today is {}, have a nice celebration!🎉",
-                                event.summary.unwrap()
+                            sending_tasks.push(send_event_notification(
+                                discord_data.clone(),
+                                &sender_http,
+                                &calendar,
+                                event,
                             ));
-                            sender_http
-                                .send_message(*channel_id, vec![], &message)
-                                .await
-                                .unwrap();
                         }
                     }
+                    futures::future::join_all(sending_tasks).await;
                 }
             }
         });
@@ -94,4 +110,38 @@ impl Client {
 
         Ok(())
     }
+}
+
+async fn send_event_notification(
+    data: Arc<RwLock<TypeMap>>,
+    sender_http: &Http,
+    calendar: &CalendarListEntry,
+    event: Event,
+) {
+    let lock = data.read().await;
+    let Ok(summary) = calendar
+        .summary
+        .as_ref()
+        .unwrap_or_else(|| unreachable!())
+        .parse()
+    else {
+        warn!("The calendar summary is not a discord server ID");
+        return;
+    };
+    let guild_id = GuildId::new(summary);
+    let pool = lock.get::<Pool>().expect("No pool found, exiting");
+    let Some(channel_id) = discord::get_event_channel_id(pool, &guild_id).await else {
+        warn!(?guild_id, "The server has no event channel");
+        return;
+    };
+    let message = CreateMessage::new().content(format!(
+        "Today is {}, have a nice celebration!🎉",
+        match event.summary.as_ref() {
+            Some(summary) => summary.as_str(),
+            None => "No label",
+        }
+    ));
+    if let Err(why) = sender_http.send_message(channel_id, vec![], &message).await {
+        error!(?why, "Failed to send an event notification")
+    };
 }

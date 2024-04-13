@@ -1,6 +1,6 @@
 use serenity::all::{
-    CommandOptionType, Context, CreateCommand, CreateCommandOption, GuildId, ResolvedOption,
-    ResolvedValue,
+    CommandOptionType, Context, CreateCommand, CreateCommandOption, GuildId, Permissions,
+    ResolvedOption, ResolvedValue,
 };
 use tracing::{error, info};
 
@@ -15,12 +15,30 @@ pub async fn run(ctx: &Context, guild_id: &GuildId, options: &[ResolvedOption<'_
     };
 
     let lock = ctx.data.read().await;
-    let calendar_client = lock.get::<crate::calendar::Client>().unwrap();
-    let event_ids = calendar_client.get_event_id_by_label(label, guild_id).await;
+    let calendar_client = lock
+        .get::<crate::calendar::Client>()
+        .expect("No calendar client found");
+    let Some(calendar) = calendar_client
+        .get_calendars_by_guild_id(guild_id)
+        .await
+        .pop()
+    else {
+        error!("Couldn't find a calendar for the guild");
+        return "No calendar for the server, create a new one! `/create_calendar`".into();
+    };
+    let calendar_id = calendar.id.unwrap_or_else(|| unreachable!());
+
+    let event_ids = calendar_client
+        .get_event_id_by_label(label, &calendar_id)
+        .await;
     info!(?event_ids, "Deleting these events");
+
+    let mut handles = Vec::with_capacity(event_ids.len());
     for id in &event_ids {
-        calendar_client.delete_event(id, guild_id).await;
+        let handle = calendar_client.delete_event(id, &calendar_id);
+        handles.push(handle);
     }
+    futures::future::join_all(handles).await;
 
     format!("Deleted {} events from the calendar!", event_ids.len())
 }
@@ -32,4 +50,5 @@ pub fn register() -> CreateCommand {
             CreateCommandOption::new(CommandOptionType::String, "label", "The label of the event")
                 .required(true),
         )
+        .default_member_permissions(Permissions::ADMINISTRATOR)
 }

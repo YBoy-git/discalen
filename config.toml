@@ -1,1 +1,5 @@
-notification_period = "5m"
+notification_period = "10s"
+db.user = "postgres"
+db.host = "localhost"
+db.port = 5432
+db.name = "event_channels"

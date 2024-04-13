@@ -3,8 +3,8 @@ use std::str::FromStr;
 use chrono::{Datelike, Days, NaiveDate, Utc};
 use google_calendar3::api::{Event, EventDateTime};
 use serenity::all::{
-    CommandOptionType, Context, CreateCommand, CreateCommandOption, GuildId, ResolvedOption,
-    ResolvedValue,
+    CommandOptionType, Context, CreateCommand, CreateCommandOption, GuildId, Permissions,
+    ResolvedOption, ResolvedValue,
 };
 use tracing::{error, instrument};
 
@@ -26,7 +26,13 @@ pub async fn run(ctx: &Context, guild_id: &GuildId, options: &[ResolvedOption<'_
         }) => {
             let year = Utc::now().year();
             let date = format!("{year}-{date}");
-            NaiveDate::from_str(&date).unwrap()
+            match NaiveDate::from_str(&date) {
+                Ok(date) => date,
+                Err(err) => {
+                    error!(date, "Wrong format for the date passed");
+                    return format!("Failed to parse date: {err}. Date format is MM-DD");
+                }
+            }
         }
         _ => Utc::now().date_naive(),
     };
@@ -38,7 +44,10 @@ pub async fn run(ctx: &Context, guild_id: &GuildId, options: &[ResolvedOption<'_
             ..Default::default()
         }),
         end: Some(EventDateTime {
-            date: Some(date.checked_add_days(Days::new(1)).unwrap()),
+            date: Some(
+                date.checked_add_days(Days::new(1))
+                    .expect("Out of range days"),
+            ),
             ..Default::default()
         }),
         recurrence: Some(vec!["RRULE:FREQ=YEARLY".into()]),
@@ -46,8 +55,20 @@ pub async fn run(ctx: &Context, guild_id: &GuildId, options: &[ResolvedOption<'_
     };
 
     let lock = ctx.data.read().await;
-    let calendar_client = lock.get::<crate::calendar::Client>().unwrap();
-    calendar_client.create_event(event, guild_id).await;
+    let calendar_client = lock
+        .get::<crate::calendar::Client>()
+        .expect("No calendar client found");
+
+    let Some(calendar) = calendar_client
+        .get_calendars_by_guild_id(guild_id)
+        .await
+        .pop()
+    else {
+        error!("Couldn't find a calendar for the guild");
+        return "No calendar for the server, create a new one! `/create_calendar`".into();
+    };
+    let calendar_id = calendar.id.unwrap_or_else(|| unreachable!());
+    calendar_client.create_event(event, &calendar_id).await;
 
     format!("The event \"{label}\" was created successfully! Date: {date}")
 }
@@ -67,4 +88,5 @@ pub fn register() -> CreateCommand {
             )
             .required(false),
         )
+        .default_member_permissions(Permissions::ADMINISTRATOR)
 }
