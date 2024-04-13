@@ -38,6 +38,7 @@ Note: not sure if the `init_db.sh` script will work on Windows, tested on Linux
 2. Insert your Discord App token into `secrets/discord-token.txt`
 3. Insert your postgres db password into `secrets/db_password.txt`
 4. Configure the app config, mainly db connection (defaults should be ok)
-5. `chmod +x scripts/inti_db.sh` (grant execution permissions)
-6. `./scripts/init_db.sh`
-7. `cargo r`
+5. Create `.env` file with `DATABASE_URL` field (`DATABASE_URL="postgres://..."`) pointing to your local db
+6. `chmod +x scripts/inti_db.sh` (grant execution permissions)
+7. `./scripts/init_db.sh`
+8. `cargo r`
