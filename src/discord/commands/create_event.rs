@@ -7,7 +7,7 @@ use serenity::all::{
     CommandOptionType, Context, CreateCommand, CreateCommandOption, GuildId, Permissions,
     ResolvedOption, ResolvedValue,
 };
-use tracing::{error, instrument};
+use tracing::{error, instrument, warn};
 
 #[instrument]
 pub async fn run(ctx: &Context, guild_id: &GuildId, options: &[ResolvedOption<'_>]) -> String {
@@ -60,16 +60,22 @@ pub async fn run(ctx: &Context, guild_id: &GuildId, options: &[ResolvedOption<'_
         .get::<CalendarClient>()
         .expect("No calendar client found");
 
-    let Some(calendar) = calendar_client
-        .get_calendars_by_guild_id(guild_id)
-        .await
-        .pop()
-    else {
-        error!("Couldn't find a calendar for the guild");
+    let mut calendars = match calendar_client.get_calendars_by_guild_id(guild_id).await {
+        Ok(calendars) => calendars,
+        Err(why) => {
+            error!(?why, "Failed to get calendars by guild id");
+            return format!("An error occurred: {why}");
+        }
+    };
+    let Some(calendar) = calendars.pop() else {
+        warn!("Couldn't find a calendar for the guild");
         return "No calendar for the server, create a new one! `/create_calendar`".into();
     };
     let calendar_id = calendar.id.unwrap_or_else(|| unreachable!());
-    calendar_client.create_event(event, &calendar_id).await;
+    if let Err(why) = calendar_client.create_event(event, &calendar_id).await {
+        error!(?why, "Failed to create event");
+        return format!("An error occurred: {why}");
+    };
 
     format!("The event \"{label}\" was created successfully! Date: {date}")
 }

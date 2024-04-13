@@ -1,6 +1,6 @@
 use crate::calendar::Client as CalendarClient;
 use serenity::all::{Context, CreateCommand, GuildId, Permissions, ResolvedOption};
-use tracing::{info, instrument};
+use tracing::{error, info, instrument};
 
 use crate::calendar::get_calendar_url;
 
@@ -11,7 +11,13 @@ pub async fn run(ctx: &Context, guild_id: GuildId, _options: &[ResolvedOption<'_
     let calendar_client = lock
         .get::<CalendarClient>()
         .expect("No calendar client found");
-    let calendars = calendar_client.get_calendars_by_guild_id(&guild_id).await;
+    let calendars = match calendar_client.get_calendars_by_guild_id(&guild_id).await {
+        Ok(calendars) => calendars,
+        Err(why) => {
+            error!(?why, "Failed to get calendars by id");
+            return format!("An error occurred: {why}");
+        }
+    };
     if !calendars.is_empty() {
         return format!(
             "A calendar already exists: {}",
@@ -25,7 +31,10 @@ pub async fn run(ctx: &Context, guild_id: GuildId, _options: &[ResolvedOption<'_
                 .join(", ")
         );
     }
-    calendar_client.create_calendar(&guild_id.to_string()).await;
+    if let Err(why) = calendar_client.create_calendar(&guild_id.to_string()).await {
+        error!(?why, "Failed to create calendar");
+        return format!("An error occurred: {why}");
+    };
     "Created the calendar! `/list_events` to get the url".into()
 }
 

@@ -1,7 +1,7 @@
 use serenity::all::{ChannelId, Context, GuildId, Permissions};
 use serenity::builder::CreateCommand;
 use serenity::model::application::ResolvedOption;
-use tracing::{info, instrument};
+use tracing::{error, info, instrument};
 
 use crate::discord::set_event_channel;
 
@@ -15,8 +15,13 @@ pub async fn run(
     info!("Setting the event channel");
     let lock = ctx.data.read().await;
     let pool = lock.get::<crate::Pool>().expect("No DB pool found");
-    set_event_channel(pool, &guild_id, &channel_id).await;
-    "The channel is set as the event channel for the server!".into()
+    match set_event_channel(pool, &guild_id, &channel_id).await {
+        Ok(_) => "The channel is set as the event channel for the server!".into(),
+        Err(why) => {
+            error!(?why, "Failed to set event channel");
+            format!("Failed to set event channel: {why}")
+        }
+    }
 }
 
 pub fn register() -> CreateCommand {

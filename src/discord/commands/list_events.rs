@@ -1,6 +1,6 @@
 use crate::calendar::Client as CalendarClient;
 use serenity::all::{Context, CreateCommand, GuildId, ResolvedOption};
-use tracing::{info, instrument, warn};
+use tracing::{error, info, instrument, warn};
 
 use crate::calendar::get_calendar_url;
 
@@ -12,11 +12,15 @@ pub async fn run(ctx: &Context, guild_id: &GuildId, _options: &[ResolvedOption<'
         .get::<CalendarClient>()
         .expect("No calendar client found");
 
-    let calendars = match calendar_client
-        .get_calendars_by_guild_id(guild_id)
-        .await
-        .pop()
-    {
+    let mut calendars = match calendar_client.get_calendars_by_guild_id(guild_id).await {
+        Ok(calendars) => calendars,
+        Err(why) => {
+            error!(?why, "Failed to get calendars by guild id");
+            return format!("An error occurred: {why}");
+        }
+    };
+
+    let calendar = match calendars.pop() {
         Some(calendar) => calendar.id.unwrap_or_else(|| unreachable!()),
         None => {
             return "No calendar found for the server! Create a new one using `/create_calendar`"
@@ -24,7 +28,13 @@ pub async fn run(ctx: &Context, guild_id: &GuildId, _options: &[ResolvedOption<'
         }
     };
 
-    let events = calendar_client.list_events(&calendars).await;
+    let events = match calendar_client.list_events(&calendar).await {
+        Ok(events) => events,
+        Err(why) => {
+            error!(?why, "Failed to list events");
+            return format!("An error occurred: {why}");
+        }
+    };
 
     info!(?events, "Returned event list");
 
@@ -55,7 +65,7 @@ pub async fn run(ctx: &Context, guild_id: &GuildId, _options: &[ResolvedOption<'
             })
             .collect::<Vec<_>>()
             .join("\n"),
-        get_calendar_url(&calendars)
+        get_calendar_url(&calendar)
     )
 }
 

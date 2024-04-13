@@ -19,19 +19,28 @@ pub async fn run(ctx: &Context, guild_id: &GuildId, options: &[ResolvedOption<'_
     let calendar_client = lock
         .get::<CalendarClient>()
         .expect("No calendar client found");
-    let Some(calendar) = calendar_client
-        .get_calendars_by_guild_id(guild_id)
-        .await
-        .pop()
-    else {
+    let mut calendars = match calendar_client.get_calendars_by_guild_id(guild_id).await {
+        Ok(calendars) => calendars,
+        Err(why) => {
+            error!(?why, "Failed to get calendars by guild id");
+            return format!("An error occurred: {why}");
+        }
+    };
+    let Some(calendar) = calendars.pop() else {
         error!("Couldn't find a calendar for the guild");
         return "No calendar for the server, create a new one! `/create_calendar`".into();
     };
     let calendar_id = calendar.id.unwrap_or_else(|| unreachable!());
 
-    let event_ids = calendar_client
+    let event_ids = match calendar_client
         .get_event_id_by_label(label, &calendar_id)
-        .await;
+        .await {
+            Ok(ids) => ids,
+            Err(why) => {
+                error!(?why, "Failed to get event id by label");
+                return format!("An error occurred: {why}");
+            }
+        };
     info!(?event_ids, "Deleting these events");
 
     let mut handles = Vec::with_capacity(event_ids.len());

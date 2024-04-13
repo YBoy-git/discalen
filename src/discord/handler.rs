@@ -1,8 +1,9 @@
-use crate::calendar::Client as CalendarClient;
 use crate::discord::commands;
+use crate::{calendar::Client as CalendarClient, Error};
 use serenity::{
     all::{
-        Context, CreateInteractionResponse, CreateInteractionResponseMessage, EventHandler, Guild, GuildId, Http, Interaction, Ready
+        Context, CreateInteractionResponse, CreateInteractionResponseMessage, EventHandler, Guild,
+        GuildId, Http, Interaction, Ready,
     },
     async_trait,
 };
@@ -20,7 +21,9 @@ impl EventHandler for Handler {
             Some(is_new) => {
                 if is_new {
                     info!("Added to {} server", guild.name);
-                    create_calendar(&ctx, guild.name).await;
+                    if let Err(why) = create_calendar(&ctx, guild.name).await {
+                        error!(?why, "Failed to create calendar");
+                    };
                     init_commands(&ctx.http, &guild.id).await;
                 }
             }
@@ -89,7 +92,7 @@ impl EventHandler for Handler {
 }
 
 #[instrument]
-async fn create_calendar(ctx: &Context, name: String) {
+async fn create_calendar(ctx: &Context, name: String) -> Result<(), Error> {
     info!("Pushing a calendar to queue");
     ctx.data
         .read()
@@ -97,7 +100,8 @@ async fn create_calendar(ctx: &Context, name: String) {
         .get::<CalendarClient>()
         .expect("No calendar client found")
         .create_calendar(&name)
-        .await;
+        .await?;
+    Ok(())
 }
 
 async fn init_commands(http: &Http, guild: &GuildId) {
