@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 
 use serenity::{
     all::{ChannelId, GuildId},
@@ -14,15 +14,6 @@ impl TypeMapKey for Data {
     type Value = Self;
 }
 
-#[derive(Default)]
-pub struct Shared {
-    pub list_requests: VecDeque<GuildId>,
-}
-
-impl TypeMapKey for Shared {
-    type Value = Self;
-}
-
 pub struct Client {
     pub serenity_client: serenity::Client,
 }
@@ -32,7 +23,6 @@ impl Client {
         {
             let mut data = client.data.write().await;
             data.insert::<Data>(Data::default());
-            data.insert::<Shared>(Shared::default());
         }
         Self {
             serenity_client: client,

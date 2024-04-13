@@ -1,5 +1,5 @@
 use google_calendar3::{
-    api::{Calendar, Event},
+    api::{AclRule, AclRuleScope, Calendar, Event},
     hyper, hyper_rustls, CalendarHub,
 };
 use serenity::{all::GuildId, prelude::TypeMapKey};
@@ -52,22 +52,52 @@ impl Client {
 
 impl Client {
     pub async fn create_calendar(&self, name: &str) {
-        let _ = match self
-            .calendar_hub
-            .calendars()
-            .insert(Calendar {
-                summary: Some(name.to_string()),
-                ..Default::default()
-            })
-            .doit()
-            .await
-        {
+        let calendar = Calendar {
+            summary: Some(name.to_string()),
+            ..Default::default()
+        };
+        let calendar = match self.calendar_hub.calendars().insert(calendar).doit().await {
             Ok(res) => res.1,
             Err(err) => {
                 error!("Error creating a calendar: {err}");
                 return;
             }
         };
+
+        let rule = AclRule {
+            role: Some("reader".into()),
+            scope: Some(AclRuleScope {
+                type_: Some("default".into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        self.calendar_hub
+            .acl()
+            .insert(rule, &calendar.id.unwrap())
+            .doit()
+            .await
+            .unwrap();
+    }
+
+    pub async fn create_event(&self, event: Event, guild_id: &GuildId) {
+        let calendar_id = self.get_calendar_id_by_guild_id(guild_id).await.unwrap();
+        self.calendar_hub
+            .events()
+            .insert(event, &calendar_id)
+            .doit()
+            .await
+            .unwrap();
+    }
+
+    pub async fn delete_event(&self, id: &str, guild_id: &GuildId) {
+        let calendar_id = self.get_calendar_id_by_guild_id(guild_id).await.unwrap();
+        self.calendar_hub
+            .events()
+            .delete(&calendar_id, id)
+            .doit()
+            .await
+            .unwrap();
     }
 
     pub async fn list_calendars(&self) -> Vec<String> {
@@ -97,7 +127,7 @@ impl Client {
             .unwrap()
     }
 
-    pub async fn get_calendar_id_by_guild_id(&self, guild_id: GuildId) -> Option<String> {
+    pub async fn get_calendar_id_by_guild_id(&self, guild_id: &GuildId) -> Option<String> {
         let mut response = self
             .calendar_hub
             .calendar_list()
@@ -113,7 +143,7 @@ impl Client {
         response.pop()?.id
     }
 
-    pub async fn get_event_id_by_label(&self, label: &str, guild_id: GuildId) -> Vec<String> {
+    pub async fn get_event_id_by_label(&self, label: &str, guild_id: &GuildId) -> Vec<String> {
         let calendar_id = self.get_calendar_id_by_guild_id(guild_id).await.unwrap();
         let response = self
             .calendar_hub
@@ -129,9 +159,7 @@ impl Client {
             .unwrap()
             .into_iter()
             .filter_map(|event| {
-                info!(event = event.summary, "Scanning an event...");
                 if event.summary == Some(label.to_string()) {
-                    info!("Pushing...");
                     Some(event.id.unwrap())
                 } else {
                     None
