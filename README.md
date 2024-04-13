@@ -28,7 +28,7 @@ Add the bot to a server and play with its functionality.
 - A Discord app with message content intent
 - docker
 - psql
-- cargo sqlx
+- cargo sqlx-cli
 
 ### Step-by-step
 
