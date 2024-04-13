@@ -9,6 +9,12 @@ pub enum Error {
     #[error("The server {0} has no event channel")]
     DiscordSeverHasNoEventChannel(GuildId),
 
+    #[error("No pool in data")]
+    NoPool,
+
+    #[error("No calendar client in data")]
+    NoCalendarClient,
+
     #[error(transparent)]
     DbError(#[from] sqlx::Error),
 

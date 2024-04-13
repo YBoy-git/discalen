@@ -98,7 +98,7 @@ async fn create_calendar(ctx: &Context, name: String) -> Result<(), Error> {
         .read()
         .await
         .get::<CalendarClient>()
-        .expect("No calendar client found")
+        .ok_or(Error::NoCalendarClient)?
         .create_calendar(&name)
         .await?;
     Ok(())

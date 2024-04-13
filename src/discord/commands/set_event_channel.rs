@@ -14,7 +14,13 @@ pub async fn run(
 ) -> String {
     info!("Setting the event channel");
     let lock = ctx.data.read().await;
-    let pool = lock.get::<crate::Pool>().expect("No DB pool found");
+    let pool = match lock.get::<crate::Pool>() {
+        Some(pool) => pool,
+        None => {
+            error!("No pool");
+            return "An error occurred".into();
+        }
+    };
     match set_event_channel(pool, &guild_id, &channel_id).await {
         Ok(_) => "The channel is set as the event channel for the server!".into(),
         Err(why) => {

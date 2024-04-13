@@ -8,9 +8,13 @@ use crate::calendar::get_calendar_url;
 pub async fn run(ctx: &Context, guild_id: &GuildId, _options: &[ResolvedOption<'_>]) -> String {
     info!("Fetching an event list for a guild");
     let lock = ctx.data.read().await;
-    let calendar_client = lock
-        .get::<CalendarClient>()
-        .expect("No calendar client found");
+    let calendar_client = match lock.get::<CalendarClient>() {
+        Some(client) => client,
+        None => {
+            error!("No calendar client");
+            return "An error occurred: no calendar client".into();
+        }
+    };
 
     let mut calendars = match calendar_client.get_calendars_by_guild_id(guild_id).await {
         Ok(calendars) => calendars,

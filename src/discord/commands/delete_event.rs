@@ -16,9 +16,13 @@ pub async fn run(ctx: &Context, guild_id: &GuildId, options: &[ResolvedOption<'_
     };
 
     let lock = ctx.data.read().await;
-    let calendar_client = lock
-        .get::<CalendarClient>()
-        .expect("No calendar client found");
+    let calendar_client = match lock.get::<CalendarClient>() {
+        Some(client) => client,
+        None => {
+            error!("No calendar client");
+            return "An error occurred: no calendar client".into();
+        }
+    };
     let mut calendars = match calendar_client.get_calendars_by_guild_id(guild_id).await {
         Ok(calendars) => calendars,
         Err(why) => {
@@ -34,13 +38,14 @@ pub async fn run(ctx: &Context, guild_id: &GuildId, options: &[ResolvedOption<'_
 
     let event_ids = match calendar_client
         .get_event_id_by_label(label, &calendar_id)
-        .await {
-            Ok(ids) => ids,
-            Err(why) => {
-                error!(?why, "Failed to get event id by label");
-                return format!("An error occurred: {why}");
-            }
-        };
+        .await
+    {
+        Ok(ids) => ids,
+        Err(why) => {
+            error!(?why, "Failed to get event id by label");
+            return format!("An error occurred: {why}");
+        }
+    };
     info!(?event_ids, "Deleting these events");
 
     let mut handles = Vec::with_capacity(event_ids.len());

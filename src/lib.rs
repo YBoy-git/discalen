@@ -143,7 +143,7 @@ async fn send_event_notification(
         }
     };
     let guild_id = GuildId::new(guild_id);
-    let pool = lock.get::<Pool>().expect("No pool found, exiting");
+    let pool = lock.get::<Pool>().ok_or(Error::NoPool)?;
     let Some(channel_id) = discord::get_event_channel_id(pool, &guild_id).await? else {
         warn!(?guild_id, "The server has no event channel");
         return Err(Error::DiscordSeverHasNoEventChannel(guild_id));
