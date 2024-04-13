@@ -1,6 +1,7 @@
 use std::env;
 
 use anyhow::{Context, Result};
+use discalen::config::AppConfig;
 use tracing::instrument;
 
 #[instrument]
@@ -9,8 +10,13 @@ async fn main() -> Result<()> {
     let _ = dotenvy::dotenv();
     tracing_subscriber::fmt().init();
 
-    let token = env::var("DISCORD_TOKEN").context("Expected a token in the environment")?;
-    discalen::Client::run(token).await?;
+    let secrets_path = format!(
+        "{}/secrets",
+        env::var("CARGO_MANIFEST_DIR").context("Couldn't read CARGO_MANIFEST_DIR")?
+    );
+    let config = AppConfig::load(secrets_path);
+
+    discalen::Client::run(config).await?;
 
     Ok(())
 }

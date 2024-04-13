@@ -7,19 +7,21 @@ pub async fn run(ctx: &Context, guild_id: &GuildId, _options: &[ResolvedOption<'
     let lock = ctx.data.read().await;
     let calendar_client = lock.get::<crate::calendar::Client>().unwrap();
 
-    let events = calendar_client
-        .list_events(
-            &calendar_client
-                .get_calendar_id_by_guild_id(guild_id)
-                .await
-                .unwrap(),
-        )
-        .await;
+    let calendar_id = match calendar_client.get_calendar_id_by_guild_id(guild_id).await {
+        Some(id) => id,
+        None => calendar_client
+            .create_calendar(&guild_id.to_string())
+            .await
+            .id
+            .unwrap(),
+    };
+
+    let events = calendar_client.list_events(&calendar_id).await;
 
     info!(?events, "Returned event list");
 
     format!(
-        "Events:\n{}",
+        "Events:\n{}\nCalendar: {}",
         events
             .into_iter()
             .map(|event| {
@@ -30,7 +32,8 @@ pub async fn run(ctx: &Context, guild_id: &GuildId, _options: &[ResolvedOption<'
                 )
             })
             .collect::<Vec<_>>()
-            .join("\n")
+            .join("\n"),
+        calendar_client.get_calendar_url(&calendar_id)
     )
 }
 

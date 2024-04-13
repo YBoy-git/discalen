@@ -1,23 +1,18 @@
 use google_calendar3::{
-    api::{AclRule, AclRuleScope, Calendar, Event},
+    api::{AclRule, AclRuleScope, Calendar, CalendarListEntry, Event},
     hyper, hyper_rustls, CalendarHub,
 };
 use serenity::{all::GuildId, prelude::TypeMapKey};
 use tracing::{error, info};
 use yup_oauth2::{
-    hyper::Client as CalendarClient, read_service_account_key, ServiceAccountAuthenticator,
+    hyper::Client as CalendarClient, parse_service_account_key, ServiceAccountAuthenticator,
 };
 
 pub type MyCalendarHub =
     CalendarHub<hyper_rustls::HttpsConnector<hyper::client::connect::HttpConnector>>;
 
-pub async fn authenticate_calendar_hub() -> MyCalendarHub {
-    let sa_key = read_service_account_key(format!(
-        "{}/secrets/discalen-sa.json",
-        std::env::var("CARGO_MANIFEST_DIR").unwrap()
-    ))
-    .await
-    .expect("Failed to read service account key");
+pub async fn authenticate_calendar_hub(key: impl AsRef<[u8]>) -> MyCalendarHub {
+    let sa_key = parse_service_account_key(key).expect("Failed to read service account key");
     let auth = ServiceAccountAuthenticator::builder(sa_key)
         .build()
         .await
@@ -43,15 +38,15 @@ impl TypeMapKey for Client {
 }
 
 impl Client {
-    pub async fn default() -> Self {
+    pub async fn with_sa_key(key: impl AsRef<[u8]>) -> Self {
         Self {
-            calendar_hub: authenticate_calendar_hub().await,
+            calendar_hub: authenticate_calendar_hub(key.as_ref()).await,
         }
     }
 }
 
 impl Client {
-    pub async fn create_calendar(&self, name: &str) {
+    pub async fn create_calendar(&self, name: &str) -> Calendar {
         let calendar = Calendar {
             summary: Some(name.to_string()),
             ..Default::default()
@@ -60,7 +55,7 @@ impl Client {
             Ok(res) => res.1,
             Err(err) => {
                 error!("Error creating a calendar: {err}");
-                return;
+                panic!()
             }
         };
 
@@ -74,10 +69,11 @@ impl Client {
         };
         self.calendar_hub
             .acl()
-            .insert(rule, &calendar.id.unwrap())
+            .insert(rule, calendar.id.as_ref().unwrap())
             .doit()
             .await
             .unwrap();
+        calendar
     }
 
     pub async fn create_event(&self, event: Event, guild_id: &GuildId) {
@@ -100,7 +96,7 @@ impl Client {
             .unwrap();
     }
 
-    pub async fn list_calendars(&self) -> Vec<String> {
+    pub async fn list_calendars(&self) -> Vec<CalendarListEntry> {
         self.calendar_hub
             .calendar_list()
             .list()
@@ -110,9 +106,6 @@ impl Client {
             .1
             .items
             .unwrap()
-            .into_iter()
-            .map(|calendar| calendar.id.unwrap().to_string())
-            .collect()
     }
 
     pub async fn list_events(&self, calendar_id: &str) -> Vec<Event> {
@@ -166,5 +159,9 @@ impl Client {
                 }
             })
             .collect()
+    }
+
+    pub fn get_calendar_url(&self, calendar_id: &str) -> String {
+        format!("https://calendar.google.com/calendar/u/0?cid={calendar_id}")
     }
 }
