@@ -9,12 +9,14 @@ use serenity::all::{
 };
 use tracing::{instrument, warn};
 
+use super::MessageResult;
+
 #[instrument]
 pub async fn run(
     ctx: &Context,
     guild_id: &GuildId,
     options: &[ResolvedOption<'_>],
-) -> Result<String, Error> {
+) -> MessageResult {
     let Some(ResolvedOption {
         value: ResolvedValue::String(label),
         ..

@@ -6,13 +6,15 @@ use tracing::{info, instrument};
 use crate::discord::set_event_channel;
 use crate::Error;
 
+use super::MessageResult;
+
 #[instrument]
 pub async fn run(
     ctx: &Context,
     guild_id: GuildId,
     channel_id: ChannelId,
     _options: &[ResolvedOption<'_>],
-) -> Result<String, Error> {
+) -> MessageResult {
     info!("Setting the event channel");
     let lock = ctx.data.read().await;
     let pool = lock.get::<crate::Pool>().ok_or(Error::NoPool)?;
