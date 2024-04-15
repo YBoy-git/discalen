@@ -1,0 +1,33 @@
+[package]
+name = "discalen"
+version = "0.1.0"
+authors = ["Anton Parfonov <antonparfonov@gmail.com>"]
+edition = "2021"
+description = "A bot to notify your discord server about upcoming events"
+repository = "https://github.com/YBoy-git/discalen"
+license = "MIT"
+keywords = ["discord", "bot"]
+
+[dependencies]
+anyhow = "1.0.81"
+chrono = "0.4.37"
+config = "0.14.0"
+dotenvy = "0.15.7"
+futures = "0.3.30"
+google-calendar3 = "5.0.4"
+humantime = "2.1.0"
+humantime-serde = "1.1.1"
+hyper = "1.2.0"
+hyper-rustls = "0.27.0"
+secrecy = "0.8.0"
+serde = { version = "1.0.197", features = ["derive"] }
+serenity = "0.12.1"
+sqlx = { version = "0.7.4", features = ["tls-rustls", "postgres", "runtime-tokio"] }
+thiserror = "1.0.58"
+tokio = { version = "1.37.0", features = ["macros", "rt-multi-thread"] }
+tracing = "0.1.40"
+tracing-subscriber = "0.3.18"
+yup-oauth2 = "8.3.3"
+
+[lints.rust]
+future-incompatible = "warn"
